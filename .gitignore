@@ -1,0 +1,10 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+checkpoints.db
+output/
+incoming/
+fixtures_adversarial/
+.DS_Store
