@@ -94,9 +94,14 @@ implementation of "it never bluffs."
   the model behaves on any future adversarial input.
 - Fresh-clone runnable — see Setup below; one documented path per entry
   point.
-- Concurrent runs stay separate — **not addressed.** The MCP server's
-  `_runs` dict and the LangGraph SQLite checkpointer have not been
-  stress-tested under concurrent access.
+- Concurrent runs stay separate — proven with real OS threads, not just
+  reasoned about. `tests/test_concurrency.py`: two simultaneous
+  `ingest_documents` calls never cross-contaminate each other's facts, and
+  50 concurrent `resolve_item` calls against the same run all land
+  correctly with none lost. Both the MCP server's `_runs` dict and the
+  `CostTracker` singleton are now guarded by locks (`threading.Lock`),
+  including on CPython 3.13+'s free-threaded builds where dict mutation
+  is no longer implicitly safe by default.
 - Cost tracking — **not built.** Gemini's per-call `usage` data (seen
   informally during SuperDocs task testing) was never wired into this
   pipeline's own reporting.

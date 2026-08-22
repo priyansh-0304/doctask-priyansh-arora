@@ -2,14 +2,13 @@
 spent and where the time went, stage by stage.' Wraps every Gemini call
 site to record token usage and latency per stage.
 
-Module-level singleton -- simplest way to thread this through every call
-site without passing a tracker object through every function signature.
-Documented tradeoff: NOT safe for genuinely concurrent runs in the same
-process (a global mutable object, no locking) -- see README's
-concurrency limitation. Fine for this project's actual usage pattern
-(one run at a time), wrong for a real multi-tenant server.
+Module-level singleton, protected by a lock -- multiple concurrent runs
+writing to the same tracker is a genuine possibility (see requirement #9),
+and dict/list mutation is not guaranteed atomic across Python builds,
+including free-threaded (no-GIL) CPython 3.13+.
 """
 
+import threading
 from dataclasses import dataclass
 
 
@@ -25,17 +24,22 @@ class CallRecord:
 class CostTracker:
     def __init__(self):
         self.records: list[CallRecord] = []
+        self._lock = threading.Lock()
 
     def record(self, stage: str, model: str, prompt_tokens: int, output_tokens: int, duration_seconds: float):
-        self.records.append(CallRecord(stage, model, prompt_tokens, output_tokens, duration_seconds))
+        with self._lock:
+            self.records.append(CallRecord(stage, model, prompt_tokens, output_tokens, duration_seconds))
 
     def report(self) -> str:
-        if not self.records:
+        with self._lock:
+            records_snapshot = list(self.records)  # copy under lock, format outside it
+
+        if not records_snapshot:
             return "--- Cost Report ---\nNo tracked calls."
 
         lines = ["--- Cost Report (stage by stage) ---"]
         by_stage: dict[str, list[CallRecord]] = {}
-        for r in self.records:
+        for r in records_snapshot:
             by_stage.setdefault(r.stage, []).append(r)
 
         total_calls = total_prompt = total_output = 0
